@@ -1,0 +1,14 @@
+{
+  "name": "logdude",
+  "version": "0.1.0",
+  "main": "index.js",
+  "type": "commonjs",
+  "description": "Minimal audit logging middleware for Express with batched delivery to a central server",
+  "keywords": ["express", "middleware", "audit", "logging"],
+  "author": "James Futhey",
+  "license": "MIT",
+  "dependencies": {
+    "node-fetch": "^2",
+    "uuid": "^9"
+  }
+}

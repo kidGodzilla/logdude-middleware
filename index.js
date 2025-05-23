@@ -1,0 +1,70 @@
+const { v4: uuidv4 } = require('uuid');
+const fetch = require('node-fetch');
+const os = require('os');
+
+function createLoggingMiddleware({ endpoint }) {
+    const FLUSH_INTERVAL_MS = 5000;
+    const MAX_BATCH_SIZE = 100;
+    const logBuffer = [];
+
+    async function sendBatchToAuditServer(logs, attempt = 1) {
+        try {
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                body: JSON.stringify(logs),
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 2000
+            });
+
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+        } catch (err) {
+            if (attempt < 3) {
+                const delay = 1000;
+                console.warn(`Audit log attempt ${attempt} failed: ${err.message}. Retrying in ${delay}ms`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return sendBatchToAuditServer(logs, attempt + 1);
+            } else {
+                throw err;
+            }
+        }
+    }
+
+    setInterval(() => {
+        if (logBuffer.length === 0) return;
+        const batch = logBuffer.splice(0, MAX_BATCH_SIZE);
+        sendBatchToAuditServer(batch).catch(err => {
+            console.error('Audit log batch failed after retries. Re-queueing...');
+            logBuffer.unshift(...batch);
+        });
+    }, FLUSH_INTERVAL_MS);
+
+    function middleware(req, res, next) {
+        if (!req.id) req.id = uuidv4();
+
+        req.logAudit = (userOverrides = {}) => {
+            const log = {
+                ts: new Date().toISOString(),
+                ip: req.headers['x-forwarded-for']?.split(',')[0] || req.connection.remoteAddress || '',
+                method: req.method,
+                path: req.path,
+                query_params: req.query || {},
+                user_agent: req.get('user-agent') || '',
+                hostname: process.env.HOSTNAME || os.hostname(),
+                route_id: `${req.method}:${req.route?.path || req.path}`,
+                tags: [],
+                extra: {},
+                ...userOverrides,
+            };
+
+            logBuffer.push(log);
+        };
+
+        next();
+    }
+
+    return middleware;
+}
+
+module.exports = createLoggingMiddleware;
