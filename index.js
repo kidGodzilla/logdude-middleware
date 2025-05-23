@@ -61,7 +61,7 @@ function createLoggingMiddleware({ endpoint, ignoreQueryParams = [] }) {
                 path: req.path,
                 query_params: filteredQueryParams,
                 user_agent: req.get('user-agent') || '',
-                hostname: process.env.HOSTNAME || os.hostname(),
+                hostname: req?.hostname || process.env.HOSTNAME || os.hostname(),
                 route_id: `${req.method}:${req.route?.path || req.path}`,
                 tags: [],
                 extra: {},
