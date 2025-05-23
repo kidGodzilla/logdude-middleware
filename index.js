@@ -2,7 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const fetch = require('node-fetch');
 const os = require('os');
 
-function createLoggingMiddleware({ endpoint }) {
+function createLoggingMiddleware({ endpoint, ignoreQueryParams = [] }) {
     const FLUSH_INTERVAL_MS = 5000;
     const MAX_BATCH_SIZE = 100;
     const logBuffer = [];
@@ -44,12 +44,22 @@ function createLoggingMiddleware({ endpoint }) {
         if (!req.id) req.id = uuidv4();
 
         req.logAudit = (userOverrides = {}) => {
+            // Filter out ignored query params
+            const filteredQueryParams = { ...req.query };
+            const paramsToIgnore = userOverrides.ignoreQueryParams || ignoreQueryParams;
+            
+            if (Array.isArray(paramsToIgnore) && paramsToIgnore.length > 0) {
+                paramsToIgnore.forEach(param => {
+                    delete filteredQueryParams[param];
+                });
+            }
+
             const log = {
                 ts: new Date().toISOString(),
                 ip: req.headers['x-forwarded-for']?.split(',')[0] || req.connection.remoteAddress || '',
                 method: req.method,
                 path: req.path,
-                query_params: req.query || {},
+                query_params: filteredQueryParams,
                 user_agent: req.get('user-agent') || '',
                 hostname: process.env.HOSTNAME || os.hostname(),
                 route_id: `${req.method}:${req.route?.path || req.path}`,
@@ -57,6 +67,11 @@ function createLoggingMiddleware({ endpoint }) {
                 extra: {},
                 ...userOverrides,
             };
+
+            // Remove the ignoreQueryParams from the final log object if it was in userOverrides
+            if (userOverrides.ignoreQueryParams) {
+                delete log.ignoreQueryParams;
+            }
 
             logBuffer.push(log);
         };

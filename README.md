@@ -18,7 +18,8 @@ const app = express();
 
 // Create and attach the middleware
 const loggingMiddleware = createLoggingMiddleware({
-    endpoint: 'http://audit.yourdomain.com/log'
+    endpoint: 'http://audit.yourdomain.com/log',
+    ignoreQueryParams: ['token', 'api_key'] // Optional: Query params to ignore globally
 });
 
 app.use(loggingMiddleware);
@@ -40,4 +41,9 @@ req.logAudit({
     auth_success: true,
     auth_reason: 'Valid API key'
 });
-```
+
+// Example usage with per-request ignored query params 
+req.logAudit({
+    user_id: req.user.id,
+    ignoreQueryParams: ['auth', 'at'] // Ignore specific query params for this log entry
+});
