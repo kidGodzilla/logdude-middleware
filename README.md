@@ -45,5 +45,5 @@ req.logAudit({
 // Example usage with per-request ignored query params 
 req.logAudit({
     user_id: req.user.id,
-    ignoreQueryParams: ['auth', 'at'] // Ignore specific query params for this log entry
+    ignoreQueryParams: ['auth'] // Ignore specific query params for this log entry
 });
