@@ -56,7 +56,7 @@ function createLoggingMiddleware({ endpoint, ignoreQueryParams = [] }) {
 
             const log = {
                 ts: new Date().toISOString(),
-                ip: req.headers['x-forwarded-for']?.split(',')[0] || req.connection.remoteAddress || '',
+                ip: req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0] || req.connection?.remoteAddress || req.socket?.remoteAddress || req.connection?.socket?.remoteAddress || '',
                 method: req.method,
                 path: req.path,
                 query_params: filteredQueryParams,

@@ -1,6 +1,6 @@
 {
   "name": "logdude",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "main": "index.js",
   "type": "commonjs",
   "description": "Minimal audit logging middleware for Express with batched delivery to a central server",
