@@ -89,6 +89,7 @@ function createLoggingMiddleware({ endpoint, ignoreQueryParams = [] }) {
                 route_id: `${req.method}:${getRoute(req)}`,
                 query_params: filteredQueryParams,
                 user_agent: req.get('user-agent') || '',
+                referer: req.get('referer') || req.headers['referer'] || '',
                 hostname: req?.hostname || process.env.HOSTNAME || os.hostname(),
                 status_code: res.statusCode,
                 duration_ms: durationMs,
