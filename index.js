@@ -145,6 +145,11 @@ function createLoggingMiddleware({
     }, RETRY_DELAY_MS);
 
     function middleware(req, res, next) {
+        // Check if logging is disabled via environment variable
+        if (process.env.DISABLE_AUDIT_LOGGING === 'true' || process.env.DISABLE_AUDIT_LOGGING === '1') {
+            return next();
+        }
+
         if (!req.id) req.id = uuidv4();
 
         // Start timing
