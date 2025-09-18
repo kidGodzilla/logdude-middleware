@@ -125,7 +125,7 @@ function createLoggingMiddleware({
         if (logBuffer.length > maxBufferSize) {
             const droppedCount = logBuffer.length - maxBufferSize;
             logBuffer.splice(0, droppedCount);
-            console.warn(`Buffer overflow: dropped ${droppedCount} old log entries`);
+            // console.warn(`Buffer overflow: dropped ${droppedCount} old log entries`);
         }
     }
 
