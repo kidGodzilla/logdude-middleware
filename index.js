@@ -2,8 +2,11 @@ const { v4: uuidv4 } = require('uuid');
 const fetch = require('node-fetch');
 const os = require('os');
 
-function createLoggingMiddleware({ 
-    endpoint, 
+const quiet = process.env.LOGDUDE_QUIET === 'true' || process.env.LOGDUDE_QUIET === '1' ||
+    process.env.QUIET_LOGDUDE === 'true' || process.env.QUIET_LOGDUDE === '1';
+
+function createLoggingMiddleware({
+    endpoint,
     ignoreQueryParams = [],
     maxBufferSize = 1000,
     maxRetryQueueSize = 500,
@@ -14,10 +17,10 @@ function createLoggingMiddleware({
     const MAX_BATCH_SIZE = 100;
     const RETRY_DELAY_MS = 1000;
     const MAX_RETRIES = 3;
-    
+
     const logBuffer = [];
     const retryQueue = [];
-    
+
     // Circuit breaker state
     let circuitState = 'CLOSED'; // CLOSED, OPEN, HALF_OPEN
     let consecutiveFailures = 0;
@@ -27,16 +30,16 @@ function createLoggingMiddleware({
     // Non-blocking retry processing
     async function processRetryQueue() {
         if (retryQueue.length === 0 || circuitState === 'OPEN') return;
-        
+
         const retryItem = retryQueue.shift();
         if (!retryItem) return;
-        
+
         try {
             await sendToAuditServer(retryItem.logs);
             resetCircuitBreaker();
         } catch (err) {
             handleCircuitBreakerFailure();
-            
+
             if (retryItem.attempts < MAX_RETRIES) {
                 // Re-queue with incremented attempt count
                 if (retryQueue.length < maxRetryQueueSize) {
@@ -45,10 +48,10 @@ function createLoggingMiddleware({
                         attempts: retryItem.attempts + 1
                     });
                 } else {
-                    console.warn('Retry queue full, dropping failed audit batch');
+                    if (!quiet) console.warn('Retry queue full, dropping failed audit batch');
                 }
             } else {
-                console.error('Audit batch failed after max retries, dropping logs');
+                if (!quiet) console.error('Audit batch failed after max retries, dropping logs');
             }
         }
     }
@@ -76,18 +79,18 @@ function createLoggingMiddleware({
     function handleCircuitBreakerFailure() {
         consecutiveFailures++;
         lastFailureTime = Date.now();
-        
+
         if (consecutiveFailures >= circuitBreakerThreshold) {
             circuitState = 'OPEN';
             nextRetryTime = Date.now() + circuitBreakerResetTimeout;
-            console.warn(`Circuit breaker OPEN: ${consecutiveFailures} consecutive failures`);
+            if (!quiet) console.warn(`Circuit breaker OPEN: ${consecutiveFailures} consecutive failures`);
         }
     }
 
     function checkCircuitBreaker() {
         if (circuitState === 'OPEN' && Date.now() >= nextRetryTime) {
             circuitState = 'HALF_OPEN';
-            console.info('Circuit breaker moving to HALF_OPEN state');
+            if (!quiet) console.info('Circuit breaker moving to HALF_OPEN state');
         }
         return circuitState !== 'OPEN';
     }
@@ -95,7 +98,7 @@ function createLoggingMiddleware({
     // Non-blocking batch sender
     async function sendBatchNonBlocking(logs) {
         if (!checkCircuitBreaker()) {
-            console.warn('Circuit breaker OPEN, dropping audit batch');
+            if (!quiet) console.warn('Circuit breaker OPEN, dropping audit batch');
             return;
         }
 
@@ -104,7 +107,7 @@ function createLoggingMiddleware({
             resetCircuitBreaker();
         } catch (err) {
             handleCircuitBreakerFailure();
-            
+
             // Queue for retry instead of blocking
             if (retryQueue.length < maxRetryQueueSize) {
                 retryQueue.push({
@@ -112,7 +115,7 @@ function createLoggingMiddleware({
                     attempts: 1
                 });
             } else {
-                console.warn('Retry queue full, dropping failed audit batch');
+                if (!quiet) console.warn('Retry queue full, dropping failed audit batch');
             }
         }
     }
@@ -120,7 +123,7 @@ function createLoggingMiddleware({
     // Buffer management with size limits
     function addToBuffer(logEntry) {
         logBuffer.push(logEntry);
-        
+
         // Enforce buffer size limit
         if (logBuffer.length > maxBufferSize) {
             const droppedCount = logBuffer.length - maxBufferSize;
@@ -132,7 +135,7 @@ function createLoggingMiddleware({
     // Main flush interval - now completely non-blocking
     setInterval(() => {
         if (logBuffer.length === 0) return;
-        
+
         const batch = logBuffer.splice(0, MAX_BATCH_SIZE);
         // Fire and forget - no await to avoid blocking
         sendBatchNonBlocking(batch);
@@ -155,7 +158,7 @@ function createLoggingMiddleware({
         // Start timing
         const startTime = process.hrtime();
         const startTimestamp = new Date().toISOString();
-        
+
         // Store any manual audit data
         req._auditData = {};
         req._auditLogged = false;
@@ -181,7 +184,7 @@ function createLoggingMiddleware({
             // Filter out ignored query params
             const filteredQueryParams = { ...req.query };
             const paramsToIgnore = req._auditData.ignoreQueryParams || ignoreQueryParams;
-            
+
             if (Array.isArray(paramsToIgnore) && paramsToIgnore.length > 0) {
                 paramsToIgnore.forEach(param => {
                     delete filteredQueryParams[param];
@@ -223,17 +226,17 @@ function createLoggingMiddleware({
 
         // Set up response hooks with proper cleanup
         let logCompleted = false;
-        
+
         function logOnComplete() {
             if (logCompleted) return; // Prevent double logging
             logCompleted = true;
-            
+
             try {
                 createLogEntry();
             } catch (err) {
-                console.error('Error creating audit log entry:', err);
+                if (!quiet) console.error('Error creating audit log entry:', err);
             }
-            
+
             // Clean up listeners to prevent memory leaks
             res.removeListener('finish', logOnComplete);
             res.removeListener('close', logOnComplete);
@@ -249,7 +252,7 @@ function createLoggingMiddleware({
                 try {
                     createLogEntry();
                 } catch (err) {
-                    console.error('Error creating audit log entry for aborted request:', err);
+                    if (!quiet) console.error('Error creating audit log entry for aborted request:', err);
                 }
             }
         });
@@ -271,4 +274,3 @@ function createLoggingMiddleware({
 }
 
 module.exports = createLoggingMiddleware;
-
