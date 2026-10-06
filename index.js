@@ -1,5 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
-const fetch = require('node-fetch');
+const { randomUUID } = require('crypto');
 const os = require('os');
 
 const quiet = process.env.LOGDUDE_QUIET === 'true' || process.env.LOGDUDE_QUIET === '1' ||
@@ -11,7 +10,9 @@ function createLoggingMiddleware({
     maxBufferSize = 1000,
     maxRetryQueueSize = 500,
     circuitBreakerThreshold = 5,
-    circuitBreakerResetTimeout = 30000
+    circuitBreakerResetTimeout = 30000,
+    // (req, res) => object merged into each entry at response time, after route auth has run.
+    enrich
 }) {
     const FLUSH_INTERVAL_MS = 5000;
     const MAX_BATCH_SIZE = 100;
@@ -62,7 +63,7 @@ function createLoggingMiddleware({
             method: 'POST',
             body: JSON.stringify(logs),
             headers: { 'Content-Type': 'application/json' },
-            timeout: 2000
+            signal: AbortSignal.timeout(2000)
         });
 
         if (!res.ok) {
@@ -132,20 +133,21 @@ function createLoggingMiddleware({
         }
     }
 
-    // Main flush interval - now completely non-blocking
+    // Main flush interval - now completely non-blocking. Timers are unref'd so they never keep the
+    // process alive on shutdown; call middleware.flush() to send what's buffered.
     setInterval(() => {
         if (logBuffer.length === 0) return;
 
         const batch = logBuffer.splice(0, MAX_BATCH_SIZE);
         // Fire and forget - no await to avoid blocking
         sendBatchNonBlocking(batch);
-    }, FLUSH_INTERVAL_MS);
+    }, FLUSH_INTERVAL_MS).unref();
 
     // Separate retry processing interval
     setInterval(() => {
         // Process retries independently - fire and forget
         processRetryQueue();
-    }, RETRY_DELAY_MS);
+    }, RETRY_DELAY_MS).unref();
 
     function middleware(req, res, next) {
         // Check if logging is disabled via environment variable
@@ -153,7 +155,7 @@ function createLoggingMiddleware({
             return next();
         }
 
-        if (!req.id) req.id = uuidv4();
+        if (!req.id) req.id = randomUUID();
 
         // Start timing
         const startTime = process.hrtime();
@@ -208,6 +210,7 @@ function createLoggingMiddleware({
                 response_finished: res.finished,
                 tags: [],
                 extra: {},
+                ...(enrich ? enrich(req, res) : {}),
                 ...req._auditData,
             };
 
@@ -259,6 +262,13 @@ function createLoggingMiddleware({
 
         next();
     }
+
+    // Send everything buffered now (e.g. on SIGTERM), so a deploy doesn't drop the last few seconds.
+    middleware.flush = async () => {
+        while (logBuffer.length > 0) {
+            await sendBatchNonBlocking(logBuffer.splice(0, MAX_BATCH_SIZE));
+        }
+    };
 
     // Expose circuit breaker status for monitoring
     middleware.getStatus = () => ({

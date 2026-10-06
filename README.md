@@ -15,6 +15,10 @@ npm install logdude
 - **Batched delivery**: Efficient batching with retry logic
 - **Query parameter filtering**: Hide sensitive parameters from logs
 - **Manual enrichment**: Add custom data to logs via `req.logAudit()`
+- **Automatic enrichment**: `enrich(req, res)` adds fields to every entry at response time
+- **Clean shutdown**: `middleware.flush()` sends buffered logs; timers never hold the process open
+
+Requires Node 18+ (native `fetch`; no node-fetch).
 
 ## Usage Example
 
@@ -58,6 +62,26 @@ app.get('/api/data', (req, res) => {
     });
     
     res.json({ data: [] });
+});
+```
+
+### Enrich every entry
+
+`enrich` runs when the response finishes, so it sees anything route-level auth set on `req`.
+`req.logAudit()` fields win over it.
+
+```js
+const loggingMiddleware = createLoggingMiddleware({
+    endpoint: 'http://audit.yourdomain.com/log',
+    enrich: (req) => (req.auth ? { user_id: req.auth.email, auth_type: 'firebase' } : {}),
+});
+```
+
+### Flush on shutdown
+
+```js
+process.once('SIGTERM', () => {
+    server.close(() => loggingMiddleware.flush().finally(() => process.exit(0)));
 });
 ```
 
