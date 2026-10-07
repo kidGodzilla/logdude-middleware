@@ -166,12 +166,19 @@ function createLoggingMiddleware({
         req._auditLogged = false;
 
         // Function to get route information
+        // Full request path. req.path is relative to the mount point inside app.use() handlers and
+        // routers mounted under a prefix, so every request to one of those logged as '/'.
+        function getFullPath(req) {
+            const url = req.originalUrl || req.url || '';
+            return url.split('?')[0] || req.path || 'unknown';
+        }
+
         function getRoute(req) {
             if (req.route && req.route.path) {
                 const baseUrl = req.baseUrl || '';
                 return `${baseUrl === '/' ? '' : baseUrl}${req.route.path}`;
             }
-            return req.path || 'unknown';
+            return getFullPath(req);
         }
 
         // Function to create the complete log entry
@@ -198,7 +205,7 @@ function createLoggingMiddleware({
                 ts: startTimestamp,
                 ip: req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0] || req.connection?.remoteAddress || req.socket?.remoteAddress || req.connection?.socket?.remoteAddress || '',
                 method: req.method,
-                path: req.path,
+                path: getFullPath(req),
                 route: getRoute(req),
                 route_id: `${req.method}:${getRoute(req)}`,
                 query_params: filteredQueryParams,
