@@ -203,7 +203,9 @@ function createLoggingMiddleware({
             const log = {
                 request_id: req.id,
                 ts: startTimestamp,
-                ip: req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0] || req.connection?.remoteAddress || req.socket?.remoteAddress || req.connection?.socket?.remoteAddress || '',
+                // nginx (realip-sync.sh) resolves the visitor behind Bunny/Cloudflare and sets
+                // X-Forwarded-For; cf-connecting-ip passes through untouched, so a client can forge it.
+                ip: req.headers['x-forwarded-for']?.split(',').pop().trim() || req.socket?.remoteAddress || req.connection?.remoteAddress || '',
                 method: req.method,
                 path: getFullPath(req),
                 route: getRoute(req),
